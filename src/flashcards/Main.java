@@ -6,7 +6,7 @@ import java.util.stream.Collectors;
 
 public class Main {
     public static void main(String[] args) {
-        FlashCards flashCards = new FlashCards();
+        FlashCards flashCards = new FlashCards(args);
         flashCards.start();
     }
 }
@@ -18,6 +18,10 @@ class FlashCards {
     private Random random;
     private List<String> lines;
     private PrintStream console;
+    private String inputFileName;
+    private String outputFileName;
+    private boolean inputDefined;
+    private boolean outputDefined;
 
     public FlashCards() {
         this.cards = new HashMap<>();
@@ -40,7 +44,28 @@ class FlashCards {
         };
     }
 
+    public FlashCards(String[] args) {
+        this();
+        for (int i = 0; i < args.length; i++) {
+            if (args[i].equalsIgnoreCase("-import")) {
+                if (i + 1 < args.length) {
+                    inputFileName = args[i + 1];
+                    inputDefined = true;
+                    i++;
+                }
+            } else if (args[i].equalsIgnoreCase("-export")) {
+                if (i + 1 < args.length) {
+                    outputFileName = args[i + 1];
+                    outputDefined = true;
+                }
+            }
+        }
+    }
+
     public void start() {
+        if (inputDefined) {
+            importCards(inputFileName);
+        }
         boolean isStopped = false;
         while (!isStopped) {
             console.println(
@@ -56,10 +81,12 @@ class FlashCards {
                     removeCard();
                     break;
                 case "import":
-                    importCards();
+                    console.println("File name:");
+                    importCards(scanner.nextLine());
                     break;
                 case "export":
-                    exportCards();
+                    console.println("File name:");
+                    exportCards(scanner.nextLine());
                     break;
                 case "ask":
                     asking();
@@ -79,6 +106,9 @@ class FlashCards {
                 case "exit":
                     isStopped = true;
                     console.println("Bye bye!");
+                    if (outputDefined) {
+                        exportCards(outputFileName);
+                    }
                     break;
                 default:
                     console.printf("\"%s\" is unknown action. Please, try again...\n", action);
@@ -116,10 +146,7 @@ class FlashCards {
         }
     }
 
-    private void importCards() {
-        console.println("File name:");
-        String fileName = scanner.nextLine();
-
+    private void importCards(String fileName) {
         try (var fileScanner = new Scanner(new FileReader(fileName))) {
             int count = 0;
             while (fileScanner.hasNextLine()) {
@@ -136,10 +163,7 @@ class FlashCards {
         }
     }
 
-    private void exportCards() {
-        console.println("File name:");
-        String fileName = scanner.nextLine();
-
+    private void exportCards(String fileName) {
         try (var fileWriter = new PrintStream(new FileOutputStream(fileName, false))) {
             int count = 0;
             for (Map.Entry<String, String> card : cards.entrySet()) {
