@@ -2,6 +2,7 @@ package flashcards;
 
 import java.io.*;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class Main {
     public static void main(String[] args) {
@@ -12,6 +13,7 @@ public class Main {
 
 class FlashCards {
     private Map<String, String> cards;
+    private Map<String, Integer> mistakes;
     private LogScanner scanner;
     private Random random;
     private List<String> lines;
@@ -19,6 +21,7 @@ class FlashCards {
 
     public FlashCards() {
         this.cards = new HashMap<>();
+        this.mistakes = new HashMap<>();
         this.scanner = new LogScanner(System.in);
         this.random = new Random();
         this.lines = new ArrayList<>();
@@ -40,7 +43,10 @@ class FlashCards {
     public void start() {
         boolean isStopped = false;
         while (!isStopped) {
-            console.println("Input the action (add, remove, import, export, ask, exit):");
+            console.println(
+                    "Input the action (add, remove, import, export, ask, exit," +
+                            " log, hardest card, reset stats):"
+            );
             String action = scanner.nextLine();
             switch (action) {
                 case "add":
@@ -61,12 +67,21 @@ class FlashCards {
                 case "log":
                     log();
                     break;
+                case "hardest card":
+                    printHardestCards();
+                    break;
+                case "reset stats":
+                    resetMistakesStat();
+                    break;
+                case "list":
+                    list();
+                    break;
                 case "exit":
                     isStopped = true;
                     console.println("Bye bye!");
                     break;
                 default:
-                    console.printf("\"%s\" is unknown action. Please, try again...", action);
+                    console.printf("\"%s\" is unknown action. Please, try again...\n", action);
             }
         }
     }
@@ -79,6 +94,7 @@ class FlashCards {
             String def = scanner.nextLine();
             if (!cards.containsValue(def)) {
                 cards.put(term, def);
+                mistakes.put(term, 0);
                 console.printf("The pair (\"%s\":\"%s\") has been added.\n", term, def);
             } else {
                 console.printf("The definition \"%s\" already exists.\n", def);
@@ -93,6 +109,7 @@ class FlashCards {
         String term = scanner.nextLine();
         if (cards.containsKey(term)) {
             cards.remove(term);
+            mistakes.remove(term);
             console.println("The card has been removed.");
         } else {
             console.printf("Can't remove \"%s\": there is no such card.\n", term);
@@ -107,19 +124,15 @@ class FlashCards {
             int count = 0;
             while (fileScanner.hasNextLine()) {
                 String term = fileScanner.nextLine();
-                if (fileScanner.hasNextLine()) {
-                    String def = fileScanner.nextLine();
-                    cards.put(term, def);
-                    count++;
-                } else {
-                    throw new IOException("The file are corrupted.");
-                }
+                String def = fileScanner.nextLine();
+                cards.put(term, def);
+                int mistakesCount = Integer.parseInt(fileScanner.nextLine());
+                mistakes.put(term, mistakesCount);
+                count++;
             }
             console.printf("%d cards have been loaded.\n", count);
         } catch (FileNotFoundException e) {
             console.println("File not found.");
-        } catch (IOException e) {
-            System.err.println(e.getMessage());
         }
     }
 
@@ -132,6 +145,7 @@ class FlashCards {
             for (Map.Entry<String, String> card : cards.entrySet()) {
                 fileWriter.println(card.getKey());
                 fileWriter.println(card.getValue());
+                fileWriter.println(mistakes.get(card.getKey()));
                 count++;
             }
             console.printf("%d cards have been saved.\n", count);
@@ -152,6 +166,39 @@ class FlashCards {
         }
     }
 
+    private void resetMistakesStat() {
+        mistakes.entrySet().forEach(entry -> entry.setValue(0));
+        System.out.println("Card statistics has been reset.");
+    }
+
+    private void printHardestCards() {
+        if (mistakes.size() > 0) {
+            int max = Collections.max(mistakes.values());
+            var hardestCards = mistakes.entrySet().stream()
+                    .filter(entry -> entry.getValue() == max)
+                    .map(Map.Entry::getKey)
+                    .collect(Collectors.toList());
+
+            if (max == 0 || hardestCards.size() == 0) {
+                System.out.println("There are no cards with errors.");
+            } else if (hardestCards.size() == 1) {
+                System.out.printf(
+                        "The hardest card is \"%s\". You have %d errors answering it.\n",
+                        hardestCards.get(0), mistakes.get(hardestCards.get(0))
+                );
+            } else {
+                StringJoiner joiner = new StringJoiner(", ");
+                hardestCards.forEach(term -> joiner.add(String.format("\"%s\"", term)));
+                System.out.printf(
+                        "The hardest cards are %s. You have %d errors answering them.\n",
+                        joiner.toString(), max
+                );
+            }
+        } else {
+            System.out.println("There are no cards with errors.");
+        }
+    }
+
     private void asking() {
         if (!cards.isEmpty()) {
             ArrayList<String> termsList = new ArrayList<>(cards.keySet());
@@ -167,18 +214,28 @@ class FlashCards {
                 } else if (cards.containsValue(userDef)) {
                     String correspondTerm = cards.entrySet().stream()
                             .filter(e -> userDef.equalsIgnoreCase(e.getValue()))
-                            .findAny().get().getKey();
-                    console.printf("Wrong answer. The correct one is \"%s\", " +
-                                    "you've just written the definition of \"%s\".\n",
+                            .findAny().orElseThrow().getKey();
+                    mistakes.put(term, mistakes.get(term) + 1);
+                    console.printf("Wrong answer. (The correct one is \"%s\", " +
+                                    "you've just written the definition of \"%s\".)\n",
                             def, correspondTerm
                     );
                 } else {
-                    console.printf("Wrong answer. The correct one is \"%s\".\n", def);
+                    mistakes.put(term, mistakes.get(term) + 1);
+                    console.printf("Wrong answer. (The correct one is \"%s\".)\n", def);
                 }
             }
         } else {
             console.println("Cards map are empty. Please, add some cards or import from  file.");
         }
+    }
+
+    private void list() {
+        cards.forEach(
+                (term, def) -> {
+                    System.out.printf("[%s] : [%s] : [%d] mistakes\n", term, def, mistakes.get(term));
+                }
+        );
     }
 
     private class LogScanner {
